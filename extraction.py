@@ -1,3 +1,4 @@
+import os
 import argparse
 from typing import Optional, List
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -27,6 +28,8 @@ class People(BaseModel):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("description", type=str)
+    parser.add_argument("--model", "-m", type=str, default="llama3.2", choices=["mistral-nemo", "llama3.2", "gpt-4o-mini"])
+    parser.add_argument("--provider", "-p", type=str, default="ollama", choices=["ollama", "openai"])
     args = parser.parse_args()
 
     prompt_template = ChatPromptTemplate.from_messages([
@@ -36,7 +39,7 @@ def main():
             "return null for the attribute's value."),
         ("human", "{text}")
     ])
-    llm = init_chat_model(model="llama3.2", model_provider="ollama")
+    llm = init_chat_model(model=args.model, model_provider=args.provider)
     structured_llm = llm.with_structured_output(schema=People)
     prompt = prompt_template.invoke({"text": args.description})
     result = structured_llm.invoke(prompt)

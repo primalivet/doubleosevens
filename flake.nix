@@ -13,6 +13,7 @@
         pythonWithPkgs = pkgs.python3.withPackages (ps: with ps; [
           langchain
           langchain-ollama
+          langchain-openai
           langchain-community
           pypdf
           requests
