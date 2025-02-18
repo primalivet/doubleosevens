@@ -19,6 +19,8 @@
           pypdf
           requests
           numpy
+          transformers
+          torch
         ]);
       in
     {
