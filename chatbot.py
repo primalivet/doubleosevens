@@ -16,14 +16,19 @@ class State(TypedDict):
 
 async def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     parser.add_argument("--model", "-m", type=str, default="llama3.2", choices=["mistral-nemo", "llama3.2", "gpt-4o-mini"])
     parser.add_argument("--provider", "-p", type=str, default="ollama", choices=["ollama", "openai"])
+    parser.add_argument("--memory-tokens", type=int, default=65, help="The more memory the more the model remembers")
     args = parser.parse_args()
+
+    if args.debug:
+        print(args)
 
     model = init_chat_model(model=args.model, model_provider=args.provider)
 
     trimmer = trim_messages(
-        max_tokens=65,
+        max_tokens=args.memory_tokens,
         strategy="last",
         token_counter=model,
         include_system=True,
@@ -38,6 +43,11 @@ async def main():
 
     async def call_model(state):
         trimmed_messages = await trimmer.ainvoke(state["messages"])
+        if args.debug:
+            print("\n\n Memory: \n")
+            print(trimmed_messages)
+            print("\n")
+
         prompt = prompt_template.invoke({ "messages": trimmed_messages, "language": state["language"] })
         response = await model.ainvoke(prompt)
         return { "messages": response }
@@ -51,27 +61,29 @@ async def main():
 
     language = "Swedish"
 
-    messages = [
-        SystemMessage(content="you're a good assistant"),
-        HumanMessage(content="hi! I'm bob"),
-        AIMessage(content="hi!"),
-        HumanMessage(content="I like vanilla ice cream"),
-        AIMessage(content="nice"),
-        HumanMessage(content="whats 2 + 2"),
-        AIMessage(content="4"),
-        HumanMessage(content="thanks"),
-        AIMessage(content="no problem!"),
-        HumanMessage(content="having fun?"),
-        AIMessage(content="yes!"),
-    ]
+    messages = []
 
     config = RunnableConfig(configurable={ "thread_id": "abc123" })
-    query = "What math problem did I ask?"
-    input_messages = messages + [HumanMessage(query)]
 
-    async for chunk, metadata in app.astream({ "messages": input_messages, "language": language }, config, stream_mode="messages"):
-        if isinstance(chunk, AIMessage):
-            print(chunk.content, end="", flush=True)
+    while True:
+        user_input = input("\nYou: ")
+        if user_input.lower() == "quit":
+            break
         
+        input_messages = messages + [HumanMessage(content=user_input)]
+
+        print("\nRobot: ", end="", flush=True)
+        assistant_response = ""
+        async for chunk, metadata in app.astream({ "messages": input_messages, "language": language }, config, stream_mode="messages"):
+            if isinstance(chunk, AIMessage):
+                print(chunk.content, end="", flush=True)
+                if isinstance(chunk.content, str):
+                    assistant_response += chunk.content
+
+        messages.extend([
+            HumanMessage(content=user_input),
+            AIMessage(content=assistant_response)
+        ])
+
 if __name__ == "__main__":
     asyncio.run(main())
