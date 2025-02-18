@@ -15,6 +15,7 @@
           langchain-ollama
           langchain-openai
           langchain-community
+          langgraph
           pypdf
           requests
           numpy
