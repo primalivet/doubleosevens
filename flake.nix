@@ -15,12 +15,14 @@
           langchain-ollama
           langchain-openai
           langchain-community
+          langchain-text-splitters
           langgraph
           pypdf
           requests
           numpy
           transformers
           torch
+          beautifulsoup4
         ]);
       in
     {
