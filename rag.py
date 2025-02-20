@@ -50,6 +50,7 @@ def main():
 
     llm = init_chat_model(model=args.model, model_provider=args.provider)
     embeddings = OpenAIEmbeddings(model="text-embedding-3-large") if args.provider == "openai" else OllamaEmbeddings(model=args.model)
+    # TODO: Switch to PGVector
     vector_store = InMemoryVectorStore(embeddings)
 
     prompt = hub.pull("rlm/rag-prompt")
