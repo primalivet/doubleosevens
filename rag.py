@@ -16,7 +16,7 @@ vector_store = InMemoryVectorStore(embeddings)
 
 def indexing_pipeline():
     loader = WebBaseLoader(
-        web_paths=("https://lilianweng.github.io/posts/2023-06-23-agent/"),
+        web_paths=("https://lilianweng.github.io/posts/2023-06-23-agent/",),
         bs_kwargs=dict(parse_only=bs4.SoupStrainer(class_=("post-content", "post-header")))
     )
     docs = loader.load()
@@ -42,6 +42,7 @@ def generate(state: State):
     return { "answer": response }
 
 def main():
+    indexing_pipeline()
     graph_builder = StateGraph(State).add_sequence([retrieve, generate])
     graph_builder.add_edge(START, "retrieve")
     graph = graph_builder.compile()
