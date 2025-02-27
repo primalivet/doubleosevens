@@ -23,6 +23,7 @@
           transformers
           torch
           beautifulsoup4
+          ipython
         ]);
       in
     {
