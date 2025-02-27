@@ -19,7 +19,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from typing_extensions import List, TypedDict
 
 
-async def load_resources():
+async def load_resources(debug=False):
     url = os.environ.get("RAG_URL")
     if url is None:
         return []
@@ -27,10 +27,12 @@ async def load_resources():
         start_url=url,
         url_limit=1000,
         concurrency=10,
-        pattern=None
+        pattern=None,
+        debug=debug
     )
 
-    print(f"Loading resources from {urls}")
+    if debug:
+        print(f"Loading resources from {len(urls)} urls on domain {url}")
     loader = WebBaseLoader(urls)
     docs = loader.load()
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
@@ -95,6 +97,7 @@ async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", "-m", type=str, default="llama3.2", choices=["mistral-nemo", "llama3.2", "gpt-4o-mini"])
     parser.add_argument("--provider", "-p", type=str, default="ollama", choices=["ollama", "openai"])
+    parser.add_argument("--debug", "-d", action="store_true")
     args = parser.parse_args()
 
     llm = init_chat_model(model=args.model, model_provider=args.provider)
@@ -102,7 +105,7 @@ async def main():
     memory = MemorySaver()
     # TODO: Switch to PGVector
     vector_store = InMemoryVectorStore(embeddings)
-    all_splits = await load_resources()
+    all_splits = await load_resources(args.debug)
     _ = await vector_store.aadd_documents(documents=all_splits)
 
     retrieve = await make_retrieve(vector_store)

@@ -2,9 +2,8 @@ import asyncio
 import aiohttp
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
-import time
 
-async def afrom_website(start_url, url_limit=100, concurrency=10, pattern=None):
+async def afrom_website(start_url, url_limit=100, concurrency=10, pattern=None, debug=False):
     """
     Asynchronously traverses a website and collects URLs up to the specified limit.
     
@@ -44,13 +43,14 @@ async def afrom_website(start_url, url_limit=100, concurrency=10, pattern=None):
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 }
                 
-                async with session.get(url, headers=headers, timeout=10) as response:
+                async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10) ) as response:
                     # Only process successful responses
                     if response.status == 200:
                         # Add to collected URLs if it matches the pattern (if specified)
                         if pattern is None or pattern in url:
                             collected_urls.append(url)
-                            print(f"Collected: {url} ({len(collected_urls)}/{url_limit})")
+                            if debug:
+                                print(f"Collected: {url} ({len(collected_urls)}/{url_limit})")
                         
                         # Don't process further if we've reached the limit
                         if len(collected_urls) >= url_limit:

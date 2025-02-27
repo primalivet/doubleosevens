@@ -24,6 +24,7 @@
           torch
           beautifulsoup4
           ipython
+          aiohttp
         ]);
       in
     {
