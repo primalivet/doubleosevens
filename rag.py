@@ -1,10 +1,12 @@
-import os
 import argparse
+import asyncio
+import os
+import collect_urls
 from langchain.chat_models import init_chat_model
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langchain_core.vectorstores import InMemoryVectorStore, VectorStore
@@ -16,13 +18,18 @@ from langgraph.graph import END, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 from typing_extensions import List, TypedDict
 
-def load_resources():
-    urls = os.environ.get("RAG_URLS")
-    if urls is None:
+
+async def load_resources():
+    url = os.environ.get("RAG_URL")
+    if url is None:
         return []
-    urls = urls.split(",")
-    if len(urls) == 0:
-        return []
+    urls = await collect_urls.afrom_website(
+        start_url=url,
+        url_limit=1000,
+        concurrency=10,
+        pattern=None
+    )
+
     print(f"Loading resources from {urls}")
     loader = WebBaseLoader(urls)
     docs = loader.load()
@@ -35,17 +42,17 @@ class State(TypedDict):
     context: List[Document]
     answer:str
 
-def make_retrieve(vs: VectorStore):
+async def make_retrieve(vs: VectorStore):
     @tool(response_format="content_and_artifact")
-    def retrieve(state: State):
+    async def retrieve(state: State):
         """ Retrieve information related to a query. """
-        retrieved_docs = vs.similarity_search(state["question"])
+        retrieved_docs = await vs.asimilarity_search(state["question"])
         serialized = "\n\n".join((f"Source: {doc.metadata}\n" f"Content: {doc.page_content}") for doc in retrieved_docs)
         return serialized, retrieved_docs
     return retrieve
 
-def make_generate(llm: BaseChatModel):
-    def generate(state: MessagesState):
+async def make_generate(llm: BaseChatModel):
+    async def generate(state: MessagesState):
         """Generate answer."""
         recent_tool_messages = []
         for message in reversed(state['messages']):
@@ -72,23 +79,22 @@ def make_generate(llm: BaseChatModel):
             or (message.type == "ai" and not message.tool_calls)
         ]
         prompt = [SystemMessage(system_message_content)] + conversation_messages
-        response = llm.invoke(prompt)
+        response = await llm.ainvoke(prompt)
         return { "messages": [response] }
     return generate
 
-def make_query_or_respond(llm: BaseChatModel, vector_store: VectorStore):
-    def query_or_respond(state: MessagesState):
+async def make_query_or_respond(llm: BaseChatModel, vector_store: VectorStore):
+    async def query_or_respond(state: MessagesState):
         """Generate tool call for retrieval or respond."""
-        llm_with_tools = llm.bind_tools([make_retrieve(vector_store)])
-        response = llm_with_tools.invoke(state['messages'])
+        llm_with_tools = llm.bind_tools([await make_retrieve(vector_store)])
+        response = await llm_with_tools.ainvoke(state['messages'])
         return { "messages": [response] }
     return query_or_respond
 
-def main():
+async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", "-m", type=str, default="llama3.2", choices=["mistral-nemo", "llama3.2", "gpt-4o-mini"])
     parser.add_argument("--provider", "-p", type=str, default="ollama", choices=["ollama", "openai"])
-    parser.add_argument("message", type=str)
     args = parser.parse_args()
 
     llm = init_chat_model(model=args.model, model_provider=args.provider)
@@ -96,12 +102,13 @@ def main():
     memory = MemorySaver()
     # TODO: Switch to PGVector
     vector_store = InMemoryVectorStore(embeddings)
-    all_splits = load_resources()
-    _ = vector_store.add_documents(documents=all_splits)
+    all_splits = await load_resources()
+    _ = await vector_store.aadd_documents(documents=all_splits)
 
-    query_or_respond = make_query_or_respond(llm, vector_store)
-    tools = ToolNode([make_retrieve(vector_store)])
-    generate = make_generate(llm)
+    retrieve = await make_retrieve(vector_store)
+    query_or_respond = await make_query_or_respond(llm, vector_store)
+    tools = ToolNode([retrieve])
+    generate = await make_generate(llm)
 
     graph_builder = StateGraph(MessagesState)
     graph_builder.add_node(query_or_respond)
@@ -120,14 +127,32 @@ def main():
         f.write(png_data)
 
     config = RunnableConfig(configurable={ "thread_id": "abc123" })
-    input_message = args.message
 
-    for step in graph.stream(
-        {"messages": [{"role": "user", "content": input_message}]},
-        stream_mode="values",
-        config=config
-    ):
-        step["messages"][-1].pretty_print()
+    messages = []
+
+    while True:
+        user_input = input("\nYou: ")
+        if user_input.lower() == "quit":
+            break
+
+        input_messages = messages + [HumanMessage(content=user_input)]
+        print("Robot: ", end="", flush=True)
+        assistent_response = ""
+
+        async for chunk,metadata in graph.astream(
+            {"messages": input_messages},
+            stream_mode="messages",
+            config=config
+        ):
+            if isinstance(chunk, AIMessage):
+                print(chunk.content, end="", flush=True)
+                if isinstance(chunk.content, str):
+                    assistent_response += chunk.content
+            messages.extend([
+                HumanMessage(content=user_input),
+                SystemMessage(content=assistent_response),
+            ])
+
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

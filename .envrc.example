@@ -1,6 +1,10 @@
 use flake
+# Langsmith options and key
 export LANGSMITH_TRACING="true"
 export LANGSMITH_API_KEY=
+# Key to use the OpenAI models from the openai provider
 export OPENAI_API_KEY=
+# Key to use the Tavily weather search API in agent.py
 export TAVILY_API_KEY=
-export RAG_URLS=
+# Entrypoint URL used to retrive the base for scraping and data loading in rag.py
+export RAG_URL=
