@@ -6,7 +6,7 @@ from langchain.chat_models import init_chat_model
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, trim_messages
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langchain_core.vectorstores import InMemoryVectorStore, VectorStore
@@ -85,19 +85,21 @@ async def make_generate(llm: BaseChatModel):
         return { "messages": [response] }
     return generate
 
-async def make_query_or_respond(llm: BaseChatModel, vector_store: VectorStore):
+async def make_query_or_respond(llm: BaseChatModel, vector_store: VectorStore, trimmer):
     async def query_or_respond(state: MessagesState):
         """Generate tool call for retrieval or respond."""
+        trimmed_messages = await trimmer.ainvoke(state['messages'])
         llm_with_tools = llm.bind_tools([await make_retrieve(vector_store)])
-        response = await llm_with_tools.ainvoke(state['messages'])
+        response = await llm_with_tools.ainvoke(trimmed_messages)
         return { "messages": [response] }
     return query_or_respond
 
 async def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--debug", "-d", action="store_true")
+    parser.add_argument("--memory-tokens", type=int, default=65, help="The more memory the more the model remembers")
     parser.add_argument("--model", "-m", type=str, default="llama3.2", choices=["mistral-nemo", "llama3.2", "gpt-4o-mini"])
     parser.add_argument("--provider", "-p", type=str, default="ollama", choices=["ollama", "openai"])
-    parser.add_argument("--debug", "-d", action="store_true")
     args = parser.parse_args()
 
     llm = init_chat_model(model=args.model, model_provider=args.provider)
@@ -108,8 +110,17 @@ async def main():
     all_splits = await load_resources(args.debug)
     _ = await vector_store.aadd_documents(documents=all_splits)
 
+    trimmer = trim_messages(
+        max_tokens=args.memory_tokens,
+        strategy="last",
+        token_counter=llm,
+        include_system=True,
+        allow_partial=False,
+        start_on="human",
+    )
+
     retrieve = await make_retrieve(vector_store)
-    query_or_respond = await make_query_or_respond(llm, vector_store)
+    query_or_respond = await make_query_or_respond(llm, vector_store, trimmer)
     tools = ToolNode([retrieve])
     generate = await make_generate(llm)
 
