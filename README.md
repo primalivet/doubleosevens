@@ -23,3 +23,6 @@ From inside the Nix development shell (started by `nix develop`).
 ```bash
 python semantic_search.py -d ./pdfs/nke-10k-2023.pdf -q "How many distribution centers does Nike have in the US?"
 ```
+
+# IDEA
+- LLM as CLI tool, stdin/stdout, pipeable, previous input as system prompt/initial message, add rag inputs.
